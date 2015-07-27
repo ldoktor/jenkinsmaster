@@ -1,0 +1,148 @@
+data:
+    ARM64_UPDATE_TOOLS_PATCH: |
+        <hudson.tasks.Shell>
+              <command># FIXME: Current qemu build doesn't support -boot
+        cd "$VIRT_TEST_PATH"
+
+        patch -p1 &lt;&lt; EOF
+        diff --git a/virttest/qemu_vm.py b/virttest/qemu_vm.py
+        index f668364..723e0eb 100644
+        --- a/virttest/qemu_vm.py
+        +++ b/virttest/qemu_vm.py
+        @@ -1042,6 +1042,7 @@ class VM(virt_vm.BaseVM):
+                         return ""
+         
+                 def add_boot(devices, boot_order, boot_once, boot_menu, boot_strict):
+        +            return ""
+                     cmd = " -boot"
+                     patterns = ["order", "once", "menu", "strict"]
+                     options = []
+
+        EOF</command>
+            </hudson.tasks.Shell>
+
+    PPC64_UPDATE_TOOLS_PATCH: |
+        <hudson.tasks.Shell>
+              <command># FIXME: PPC doesn't support virtio_blk cdrom
+        cd "$VIRT_TEST_PATH"
+
+        patch -p1 &lt;&lt; EOF
+        diff --git a/shared/cfg/guest-hw.cfg b/shared/cfg/guest-hw.cfg
+        index 6ceb0f4..3e16802 100644
+        --- a/shared/cfg/guest-hw.cfg
+        +++ b/shared/cfg/guest-hw.cfg
+        @@ -65,7 +65,6 @@ variants:
+                 drive_format=sd
+             - virtio_blk:
+                 drive_format=virtio
+        -        cd_format=virtio
+                 # Add -drive ...boot=yes unless qemu-kvm is 0.12.1.2 or newer
+                 # then kvm_vm will ignore this option.
+                 image_boot=yes
+
+        EOF</command>
+            </hudson.tasks.Shell>
+
+    CHECK_MACHINE_PPC64_TASK: |
+        <hudson.tasks.Shell>
+          <command>[ $(uname -m) == ppc64 ] || ( echo "Executing ppc64 job on $(uname -m) kernel" ; exit 255 )</command>
+        </hudson.tasks.Shell>
+    CHECK_MACHINE_PPC64LE_TASK: |
+        <hudson.tasks.Shell>
+          <command>[ $(uname -m) == ppc64le ] || ( echo "Executing ppc64le job on $(uname -m) kernel" ; exit 255 )</command>
+        </hudson.tasks.Shell>
+
+views:
+    ARM64-devel:
+        MACHINES:
+            - arm1
+        JOBS:
+            10_Update_tools:
+                PATCH:
+                    __DATA__: "ARM64_UPDATE_TOOLS_PATCH"
+            20_Update_image:
+                ISO_URL: "http://localhost/isos-arm"
+                ISO_TAG: "$MACHINE"
+            21_Restore_image:
+            30_run_test:
+            31_list_tests:
+            virtio_console:
+            multi_disk:
+            cgroup:
+    ARM64-stable:
+        __EXTENDS__: "ARM64-devel"
+        MACHINES:
+            - stable-arm
+
+    PPC64BE2BE:
+        __LONG_NAME__: PPC64BEguestBEhost
+        MACHINES: &PPC64BE_MACHINES
+            - ppc1
+            - ppc2
+        __SHARED__:
+            FIRST_TASK:
+                __DATA__: "CHECK_MACHINE_PPC64_TASK"
+        JOBS:
+            10_Update_tools:
+                PATCH:
+                    __DATA__: "PPC64_UPDATE_TOOLS_PATCH"
+            20_Update_image:
+                ISO_URL: "http://localhost/isos-arm"
+                ISO_TAG: "$ARCH"
+            21_Restore_image:
+            30_run_test:
+            31_list_tests:
+            virtio_console:
+            multi_disk:
+            cgroup:
+
+    PPC64LE2BE:
+        __LONG_NAME__: PPC64BEguestLEhost
+        __EXTENDS__: "PPC64BE2BE"
+        MACHINES: &PPC64LE_MACHINES
+            - ppc2
+            - ppc1
+        __SHARED__:
+            FIRST_TASK:
+                __DATA__: "CHECK_MACHINE_PPC64LE_TASK"
+
+    PPC64BE2LE:
+        __LONG_NAME__: PPC64LEguestBEhost
+        __EXTENDS__: "PPC64BE2BE"
+        MACHINES: *PPC64BE_MACHINES
+        __SHARED__:
+            AVOCADO_EXTRA: "--vt-arch ${ARCH}le"
+        JOBS:
+            20_Update_image:
+                ISO_FIRST_LINE: "ARCH=${ARCH}le"
+                ISO_URL: "http://localhost/isos-ppc"
+
+    PPC64LE2LE:
+        __LONG_NAME__: PPC64LEguestLEhost
+        __EXTENDS__: "PPC64BE2LE"
+        MACHINES: *PPC64LE_MACHINES
+        __SHARED__:
+            AVOCADO_EXTRA: "--vt-arch ${ARCH}le"
+            FIRST_TASK:
+                __DATA__: "CHECK_MACHINE_PPC64LE_TASK"
+        JOBS:
+            20_Update_image:
+                ISO_FIRST_LINE: "ARCH=${ARCH}le"
+                ISO_URL: "http://localhost/isos-ppc-le"
+
+
+view: "RHELSA-devels"
+
+templates:
+    virtio_console:
+        __TEMPLATE__: "__run_test__"
+        DESCRIPTION: "Run virtio-console related tests"
+        AVOCADO_TESTS: "virtio_console"
+    multi_disk:
+        __TEMPLATE__: "__run_test__"
+        DESCRIPTION: "Run VM with multiple disks and perform IO."
+        AVOCADO_TESTS: "multi_disk"
+    cgroup:
+        __TEMPLATE__: "__run_test__"
+        DESCRIPTION: "Run cgroup related tests"
+        AVOCADO_TESTS: "cgroup"
